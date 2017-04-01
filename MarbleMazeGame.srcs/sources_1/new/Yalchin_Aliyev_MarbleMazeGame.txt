@@ -1,0 +1,1262 @@
+module MarbleMazeGame(
+    input logic clk, reset, up, down, right, left, start, mode,     // if mode = 1 then timer will be used in the game
+    output logic spi_clk, mosi, load,
+    output logic a, b, c, d, e, f, g, dp,
+    output logic [3:0] an
+    );
+    
+    logic [15:0][7:0] frame1 ={ 8'b1000_0000,
+                                8'b0000_0000,
+                                8'b0000_0000,
+                                8'b0000_0000,
+                                8'b1111_0000,
+                                8'b0000_0000,
+                                8'b0000_0000,
+                                8'b0000_0000,
+                                8'b0001_1111,
+                                8'b0000_0000,
+                                8'b0000_0000,
+                                8'b0000_0000,
+                                8'b1110_0000,
+                                8'b0000_0000,
+                                8'b0001_1100,
+                                8'b0000_0000 };
+    
+    logic [15:0][7:0] frame2 ={ 8'b1000_0000,
+                                8'b0000_0000,
+                                8'b0001_1000,
+                                8'b0000_0000,
+                                8'b0110_0010,
+                                8'b0000_0011,
+                                8'b0000_0000,
+                                8'b0000_0000,
+                                8'b0001_1100,
+                                8'b0000_1000,
+                                8'b0000_1000,
+                                8'b1100_1001,
+                                8'b0000_1000,
+                                8'b0000_0000,
+                                8'b1111_0000,
+                                8'b0000_0000 };                          
+    
+    logic [15:0][7:0] frame3 ={ 8'b1000_0000,                 
+                               8'b0000_0001,
+                               8'b0010_0001,
+                               8'b0010_0100,
+                               8'b0010_0100,
+                               8'b0110_0101,
+                               8'b0010_0100,
+                               8'b0010_0100,
+                               8'b1010_0100,
+                               8'b0010_0110,
+                               8'b0010_0000,
+                               8'b0010_0000,
+                               8'b0111_1100,
+                               8'b0010_0000,
+                               8'b1000_0011,
+                               8'b0000_0000 };
+    
+    logic [3:0][7:0] one = {
+        8'b1000_0100,
+        8'b1111_1110,
+        8'b1000_0000,
+        8'b0000_0000
+    };  
+    
+    logic [3:0][7:0] two = {
+        8'b1100_0100,
+        8'b1010_0010,
+        8'b1001_0010,
+        8'b1000_1100
+    };  
+    
+    logic [3:0][7:0] three = {
+        8'b0100_0100,
+        8'b1000_0010,
+        8'b1001_0010,
+        8'b0110_1100
+    };                             
+    
+    logic [15:0][7:0] frame;
+    logic finish;
+    logic [1:0] level;
+    logic [2:0] ballRow;
+    logic [3:0] ballCol;
+    logic [3:0] shift;
+    logic [3:0] loading;
+    logic [3:0] timer;
+    
+    FrameLoader asd(clk, reset, frame, spi_clk, mosi, load, finish);
+    
+    logic [5:0] s, nextS;
+    
+    // clock divider for frame rate
+    logic clk_en = 1'b0;
+    logic [8:0] count = 9'd0;
+    always_ff@(posedge finish)
+        begin
+            count <= count + 1;
+            
+            if(count == 9'd500) begin
+                count <= 9'd0;
+                clk_en <= 1'b1;
+            end
+            else
+                clk_en <= 1'b0;
+        end
+    
+    // clock divider for game over frame rate
+    logic pass = 1'b0;
+    logic [4:0] count1 = 5'd0;
+    always_ff@(posedge clk_en)
+        begin
+            count1 <= count1 + 1;
+            
+            if(count1 == 5'd10) begin
+                count1 <= 5'd0;
+                pass <= 1'b1;
+            end
+            else
+                pass <= 1'b0;
+        end
+        
+    // clock divider for the timer
+    logic timer_clk = 1'b0;
+    logic [26:0] count2 = 27'd0;
+    always_ff@(posedge clk)
+         begin
+            count2 <= count2 + 1;
+                    
+            if(count2 == 27'd100000000) begin
+                 count2 <= 27'd0;
+                 timer_clk <= 1'b1;
+            end
+            else
+                 timer_clk <= 1'b0;
+         end
+    
+    // register for the timer which is enabled only when mode == 1
+    always_ff@(posedge timer_clk) begin
+        if(s == 6 | s == 0)
+            timer <= 9;
+        else if(s == 1 | s == 2 | s == 3 | s == 4 | s == 5 | s == 7 | s == 8 | s == 10 | s == 11 | s == 13)
+             begin
+                 if(timer != 0)    
+                    timer <= timer - 1;
+             end
+    end
+    
+    // state register
+    always_ff@(negedge clk_en, negedge reset)
+        if (~reset) begin
+            s <= 0;
+        end
+        else begin
+            
+                  // timer affects the game only when the game is not in normal mode(mode = 1)
+                if(mode & timer == 0) begin
+                    s <= 6;     // game over
+                end
+                else
+                    s <= nextS;
+        end
+        
+    
+    // next state and output logic
+    always_ff@(posedge clk_en)
+        case(s)
+            0: begin  // and level 1
+    
+                frame <= {
+                    8'b1000_0010,
+                    8'b1111_1110,
+                    8'b1000_0000,
+                    8'b0011_1000,
+                    8'b0100_0000,
+                    8'b1000_0000,
+                    8'b0100_0000,
+                    8'b0011_1000,
+                    8'b1000_0010,
+                    8'b1111_1110,
+                    8'b1000_0000,
+                    8'b0000_0000,
+                    one
+                };
+    
+                shift <= 0;
+                level <= 1;
+    
+                if(start)
+                    nextS <= 35;
+                else
+                    if(up)
+                        nextS <= 15;
+                    else
+                        nextS <= 0;
+            end
+            15: begin
+                frame[3] <= frame[3] << 1;
+                frame[2] <= frame[2] << 1;
+                frame[1] <= frame[1] << 1;
+                frame[0] <= frame[0] << 1;
+                
+                nextS <= 16;
+                
+            end
+            16: begin
+                frame[3][0] <= two[3][7 - shift];
+                frame[2][0] <= two[2][7 - shift];
+                frame[1][0] <= two[1][7 - shift];
+                frame[0][0] <= two[0][7 - shift];
+                if(shift < 7)
+                    nextS <= 17;
+                else
+                    nextS <= 18;
+            end
+            17: begin
+                shift <= shift + 1;
+                nextS <= 15;
+            end
+            // level 2
+            18: begin
+                frame <= {
+                    8'b1000_0010,
+                    8'b1111_1110,
+                    8'b1000_0000,
+                    8'b0011_1000,
+                    8'b0100_0000,
+                    8'b1000_0000,
+                    8'b0100_0000,
+                    8'b0011_1000,
+                    8'b1000_0010,
+                    8'b1111_1110,
+                    8'b1000_0000,
+                    8'b0000_0000,
+                    two
+                };
+    
+                shift <= 0;
+                level <= 2;
+    
+                if(start)
+                    nextS <= 35;
+                else
+                    if(up)
+                        nextS <= 19;
+                    else if(down)
+                        nextS <= 26;
+                    else
+                        nextS <= 18;
+            end
+            19: begin
+                frame[3] <= frame[3] << 1;
+                frame[2] <= frame[2] << 1;
+                frame[1] <= frame[1] << 1;
+                frame[0] <= frame[0] << 1;
+                
+                nextS <= 20;
+            end
+            20: begin
+                frame[3][0] <= three[3][7 - shift];
+                frame[2][0] <= three[2][7 - shift];
+                frame[1][0] <= three[1][7 - shift];
+                frame[0][0] <= three[0][7 - shift];
+                if(shift < 7)
+                    nextS <= 21;
+                else
+                    nextS <= 22;
+            end
+            21: begin
+                shift <= shift + 1;
+                nextS <= 19;
+            end
+    
+            // level 3
+            22: begin
+                frame <= {
+                    8'b1000_0010,
+                    8'b1111_1110,
+                    8'b1000_0000,
+                    8'b0011_1000,
+                    8'b0100_0000,
+                    8'b1000_0000,
+                    8'b0100_0000,
+                    8'b0011_1000,
+                    8'b1000_0010,
+                    8'b1111_1110,
+                    8'b1000_0000,
+                    8'b0000_0000,
+                    three
+                };
+    
+                shift <= 0;
+                level <= 3;
+    
+                if(start)
+                    nextS <= 35;
+                else
+                    if(down)
+                        nextS <= 23;
+                    else   
+                        nextS <= 22;
+            end
+            // going from level 3 to level 2
+            23: begin
+                frame[3] <= frame[3] >> 1;
+                frame[2] <= frame[2] >> 1;
+                frame[1] <= frame[1] >> 1;
+                frame[0] <= frame[0] >> 1;
+                
+                nextS <= 24;
+            end
+            24: begin
+                frame[3][7] <= two[3][shift];
+                frame[2][7] <= two[2][shift];
+                frame[1][7] <= two[1][shift];
+                frame[0][7] <= two[0][shift];
+                
+                if(shift < 7)
+                    nextS <= 25;
+                else
+                    nextS <= 18;
+            end
+            25: begin
+                shift <= shift + 1;
+                nextS <= 23;
+            end
+    
+            // going from level 2 to level 1
+            26: begin
+                frame[3] <= frame[3] >> 1;
+                frame[2] <= frame[2] >> 1;
+                frame[1] <= frame[1] >> 1;
+                frame[0] <= frame[0] >> 1;
+                
+                nextS <= 27;
+            end
+            27: begin
+                frame[3][7] <= one[3][shift];
+                frame[2][7] <= one[2][shift];
+                frame[1][7] <= one[1][shift];
+                frame[0][7] <= one[0][shift];
+                
+                if(shift < 7)
+                    nextS <= 28;
+                else
+                    nextS <= 0;
+            end
+            28: begin
+                shift <= shift + 1;
+                nextS <= 26;
+            end
+    
+            // starting the game
+            35: begin
+                case(level)
+                    1: frame <= frame1;
+                    2: frame <= frame2;
+                    3: frame <= frame3;
+                endcase
+    
+                ballRow <= 7;
+                ballCol <= 15;
+                nextS <= 13;
+            end
+    
+            13: begin
+                case(up)
+                    1: nextS <= 1;
+                    0: case(down)
+                        1: nextS <= 4;
+                        0: case(right)
+                            1: nextS <= 7;
+                            0: case(left)
+                                1: nextS <= 10;
+                                0: nextS <= 13;
+                            endcase
+                        endcase
+                    endcase
+                endcase
+            end
+    
+            //-- States for up button --//
+            1: begin
+                frame[ballCol][ballRow] <= 1'b0;
+                nextS <= 2;
+            end
+            2: begin
+                ballRow <= ballRow - 1;
+                nextS <= 3;
+            end
+            3: begin
+                if(frame[ballCol][ballRow] == 1'b1) // means the game is lost
+                    nextS <= 6;
+                else if(ballCol == 0)  // means the game is won
+                    nextS <= 12;
+                else begin
+                    frame[ballCol][ballRow] <= 1'b1;
+                    nextS <= 13;
+                end
+            end
+    
+            //-- States for down button --//
+            4: begin
+                frame[ballCol][ballRow] <= 1'b0;
+                nextS <= 5;
+            end
+            5: begin
+                ballRow <= ballRow + 1;
+                nextS <= 3;
+            end
+    
+            //-- States for right button --//
+            7: begin
+                if(ballCol > 0) begin
+                    frame[ballCol][ballRow] <= 1'b0;
+                    nextS <= 8;
+                end
+                else
+                    nextS <= 13;
+            end
+            8: begin
+                ballCol <= ballCol - 1;
+                nextS <= 3;
+            end
+            
+            //-- States for left button --//
+            10: begin
+                if(ballCol < 15) begin
+                    frame[ballCol][ballRow] <= 1'b0;
+                    nextS <= 11;
+                end
+                else
+                    nextS <= 13;
+            end
+            11: begin
+                ballCol <= ballCol + 1;
+                nextS <= 3;
+            end
+    
+            //-- States for game over
+            6: begin
+                loading <= 0;
+                frame <= {
+                    8'b0000_0000,
+                    8'b0000_0000,
+                    8'b0000_0000,
+                    8'b0000_0000,
+                    8'b1000_0001,
+                    8'b0100_0010,
+                    8'b0010_0100,
+                    8'b0001_1000,
+                    8'b0001_1000,
+                    8'b0010_0100,
+                    8'b0100_0010,
+                    8'b1000_0001,
+                    8'b0000_0000,
+                    8'b0000_0000,
+                    8'b0000_0000,
+                    8'b0000_0000
+                };
+    
+                if(start)
+                    nextS <= 40; // restarting the game
+                else if(pass)
+                    nextS <= 9;
+            end
+            9: begin
+                frame <= {
+                    8'b1111_1111,
+                    8'b1111_1111,
+                    8'b1111_1111,
+                    8'b1111_1111,
+                    8'b0111_1110,
+                    8'b1011_1101,
+                    8'b1101_1011,
+                    8'b1110_0111,
+                    8'b1110_0111,
+                    8'b1101_1011,
+                    8'b1011_1101,
+                    8'b0111_1110,
+                    8'b1111_1111,
+                    8'b1111_1111,
+                    8'b1111_1111,
+                    8'b1111_1111
+                };
+    
+                if(start)
+                    nextS <= 40; // restarting the game
+                else if(pass)
+                    nextS <= 6;
+            end
+    
+            //-- States for winning
+            12: begin
+                loading <= 0;
+                frame <= {
+                    8'b0011_1110,
+                    8'b0100_0000,
+                    8'b0011_1100,
+                    8'b0100_0000,
+                    8'b0011_1110,
+                    8'b00000_000,
+                    8'b0011_1000,
+                    8'b0100_0100,
+                    8'b0100_0100,
+                    8'b0011_1000,
+                    8'b0000_0000,
+                    8'b0111_1100,
+                    8'b0000_1000,
+                    8'b0001_0000,
+                    8'b0010_0000,
+                    8'b0111_1100
+                };
+    
+                if(start)
+                    nextS <= 40; // restarting the game
+                else  if(pass)
+                    nextS <= 14;
+            end
+            14: begin
+                frame <= {
+                    8'b1100_0001,
+                    8'b1011_1111,
+                    8'b1100_0011,
+                    8'b1011_1111,
+                    8'b1100_0001,
+                    8'b1111_1111,
+                    8'b1100_0111,
+                    8'b1011_1011,
+                    8'b1011_1011,
+                    8'b1100_0111,
+                    8'b1111_1111,
+                    8'b1000_0011,
+                    8'b1111_0111,
+                    8'b1110_1111,
+                    8'b1101_1111,
+                    8'b1000_0011
+                };
+    
+                if(start)
+                    nextS <= 40; // restarting the game
+                else if(pass)
+                    nextS <= 12;
+            end
+            40: begin
+                if(loading == 8)
+                    nextS <= 0;
+                else
+                    nextS <= 41;
+            end
+            41: begin
+                loading <= loading + 1;
+                nextS <= 40;
+            end
+    
+        endcase
+        
+        // 7 segment display
+            logic [3:0] digit;
+            assign digit = mode ? timer : level;
+            logic [6:0] leds;
+            always_comb begin
+                leds = 7'b1111111;
+                case(digit)
+                   4'd0 : leds = 7'b1000000;
+                   4'd1 : leds = 7'b1111001;
+                   4'd2 : leds = 7'b0100100;
+                   4'd3 : leds = 7'b0110000;
+                   4'd4 : leds = 7'b0011001;
+                   4'd5 : leds = 7'b0010010;
+                   4'd6 : leds = 7'b0000010;
+                   4'd7 : leds = 7'b1111000;
+                   4'd8 : leds = 7'b0000000;
+                   4'd9 : leds = 7'b0010000; 
+                   default: leds = 7'b0111111;
+                endcase
+            end
+            assign an = 4'b1110; 
+            assign {g, f, e, d, c, b, a} = leds; 
+            assign dp = 1'b1;
+    endmodule
+
+module FrameLoader(
+    input logic clk, reset,
+    input logic [15:0][7:0] frame,
+    output logic spi_clk, mosi, load, finish
+    );
+    
+    // max7219 registers
+        logic [7:0] reg_noop        = 8'h00;
+        logic [7:0] reg_digit0      = 8'h01;
+        logic [7:0] reg_digit1      = 8'h02;
+        logic [7:0] reg_digit2      = 8'h03;
+        logic [7:0] reg_digit3      = 8'h04;
+        logic [7:0] reg_digit4      = 8'h05;
+        logic [7:0] reg_digit5      = 8'h06;
+        logic [7:0] reg_digit6      = 8'h07;
+        logic [7:0] reg_digit7      = 8'h08;
+        logic [7:0] reg_decodeMode  = 8'h09;
+        logic [7:0] reg_intensity   = 8'h0a;
+        logic [7:0] reg_scanLimit   = 8'h0b;
+        logic [7:0] reg_shutdown    = 8'h0c;
+        logic [7:0] reg_displayTest = 8'h0f;
+        
+        logic [7:0] data1; // data to load on 1st LED matrix
+        logic [7:0] data2; // data to load on 2nd LED matrix
+        logic [7:0] address1; // address of register on 1st LED matrix
+        logic [7:0] address2; // address of register on 2nd LED matrix
+    
+    // clock divider
+    logic [5:0] count = 5'd0;
+    always@(posedge clk) begin
+         count <= count + 1;
+                    
+         if( count == 5'd19)
+            count <= 5'd0;
+         if( count <= 5'd9)
+            spi_clk <= 1'b1;
+         else
+            spi_clk <= 1'b0;
+    end
+    
+    // module to load the data to max7219
+    SPI_StateMachine DLSM( spi_clk, reset, address2, data2, address1, data1, mosi, load);
+    
+    logic [5:0] s, nextS;
+    
+    // state register
+    always_ff@(posedge load, negedge reset)
+        if(~reset)
+            s <= 0;
+        else
+            s <= nextS;
+        
+    // states
+    always_comb
+        case(s)
+            0: begin
+                address2 = reg_scanLimit;
+                data2 = 8'h07;
+                address1 = reg_scanLimit;
+                data1 = 8'h07;
+                nextS = 1;
+                finish = 0;
+            end
+            1: begin
+                address2 = reg_decodeMode;
+                data2 = 8'h00;
+                address1 = reg_decodeMode;
+                data1 = 8'h00;
+                nextS = 2;
+            end
+            2: begin
+                address2 = reg_shutdown;
+                data2 = 8'h01;
+                address1 = reg_shutdown;
+                data1 = 8'h01;
+                nextS = 3;
+            end
+            3: begin
+                address2 = reg_displayTest;
+                data2 = 8'h00;
+                address1 = reg_displayTest;
+                data1 = 8'h00;
+                nextS = 4;
+            end
+            4: begin
+                address2 = reg_intensity;
+                data2 = 8'h0f;
+                address1 = reg_intensity;
+                data1 = 8'h0f;
+                nextS = 5;
+            end
+            5: begin
+                address2 = reg_digit0;
+                data2 = 8'h00;
+                address1 = reg_digit0;
+                data1 = 8'h00;
+                nextS = 6;
+            end
+            6: begin
+                address2 = reg_digit1;
+                data2 = 8'h00;
+                address1 = reg_digit1;
+                data1 = 8'h00;
+                nextS = 7;
+            end
+            7: begin
+                address2 = reg_digit2;
+                data2 = 8'h00;
+                address1 = reg_digit2;
+                data1 = 8'h00;
+                nextS = 8;
+            end
+            8: begin
+                address2 = reg_digit3;
+                data2 = 8'h00;
+                address1 = reg_digit3;
+                data1 = 8'h00;
+                nextS = 9;
+            end
+            9: begin
+                address2 = reg_digit4;
+                data2 = 8'h00;
+                address1 = reg_digit4;
+                data1 = 8'h00;
+                nextS = 10;
+            end
+            10: begin
+                address2 = reg_digit5;
+                data2 = 8'h00;
+                address1 = reg_digit5;
+                data1 = 8'h00;
+                nextS = 11;
+            end
+            11: begin
+                address2 = reg_digit6;
+                data2 = 8'h00;
+                address1 = reg_digit6;
+                data1 = 8'h00;
+                nextS = 12;
+            end
+            12: begin
+                address2 = reg_digit7;
+                data2 = 8'h00;
+                address1 = reg_digit7;
+                data1 = 8'h00;
+                nextS = 14;
+            end
+            14: begin
+                address2 = reg_noop;
+                data2 = 8'h00;
+                address1 = reg_noop;
+                data1 = 8'h00;
+                nextS = 15;
+                finish = 0;
+            end
+            15: begin
+                address2 = reg_digit0;
+                data1 = frame[15];
+                address1 = reg_digit0;
+                data2 = frame[7];
+                nextS = 16;
+            end
+            16: begin
+                address2 = reg_digit1;
+                data1 = frame[14];
+                address1 = reg_digit1;
+                data2 = frame[6];
+                nextS = 17;
+            end
+            17: begin
+                address2 = reg_digit2;
+                data1 = frame[13];
+                address1 = reg_digit2;
+                data2 = frame[5];
+                nextS = 18;
+            end
+            18: begin
+                address2 = reg_digit3;
+                data1 = frame[12];
+                address1 = reg_digit3;
+                data2 = frame[4];
+                nextS = 19;
+            end
+            19: begin
+                address2 = reg_digit4;
+                data1 = frame[11];
+                address1 = reg_digit4;
+                data2 = frame[3];
+                nextS = 20;
+            end
+            20: begin
+                address2 = reg_digit5;
+                data1 = frame[10];
+                address1 = reg_digit5;
+                data2 = frame[2];
+                nextS = 21;
+            end
+            21: begin
+                address2 = reg_digit6;
+                data1 = frame[9];
+                address1 = reg_digit6;
+                data2 = frame[1];
+                nextS = 22;
+            end
+            22: begin
+                address2 = reg_digit7;
+                data1 = frame[8];
+                address1 = reg_digit7;
+                data2 = frame[0];
+                nextS = 23;
+            end
+            23: begin
+                address2 = reg_noop;
+                data2 = 8'h00;
+                address1 = reg_noop;
+                data1 = 8'h00;
+                finish = 1;
+                nextS = 14;
+            end
+        endcase   
+
+endmodule
+
+module SPI_StateMachine(
+    input logic spi_clk, reset, [7:0] address2, [7:0] data2, [7:0] address1, [7:0] data1,
+    output logic mosi, load
+    );
+    
+    typedef enum logic [5:0] { S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15, S16, S17, S18, S19, S20, S21, S22, S23, S24, S25, S26, S27, S28, S29, S30, S31, S32, S33} statetype;
+    statetype s, nextS;
+    
+    logic [31:0] serial_data;
+    
+    // state registor
+    always_ff@(negedge spi_clk)
+        if (~reset)
+            s <= S0;
+        else
+            s <= nextS;
+            
+    // next state logic
+    always_comb
+        case(s)
+            S0: nextS = S1;
+            S1: nextS = S2;
+            S2: nextS = S3;
+            S3: nextS = S4;
+            S4: nextS = S5;
+            S5: nextS = S6;
+            S6: nextS = S7;
+            S7: nextS = S8;
+            S8: nextS = S9;
+            S9: nextS = S10;                
+            S10: nextS = S11;
+            S11: nextS = S12;
+            S12: nextS = S13;
+            S13: nextS = S14;
+            S14: nextS = S15;
+            S15: nextS = S16;
+            S16: nextS = S17;
+            S17: nextS = S18;
+            S18: nextS = S19;
+            S19: nextS = S20;
+            S20: nextS = S21;
+            S21: nextS = S22;
+            S22: nextS = S23;
+            S23: nextS = S24;
+            S24: nextS = S25;
+            S25: nextS = S26;
+            S26: nextS = S27;
+            S27: nextS = S28;
+            S28: nextS = S29;
+            S29: nextS = S30;
+            S30: nextS = S31;
+            S31: nextS = S32;
+            S32: nextS = S33;
+            S33: nextS = S0;
+            
+        endcase
+        
+    // output logic
+    always_comb
+        case(s)
+            S0: begin mosi = 0; load = 0; end
+            S1: begin mosi = serial_data[31]; load = 0; end
+            S2: begin mosi = serial_data[30]; load = 0; end
+            S3: begin mosi = serial_data[29]; load = 0; end
+            S4: begin mosi = serial_data[28]; load = 0; end
+            S5: begin mosi = serial_data[27]; load = 0; end
+            S6: begin mosi = serial_data[26]; load = 0; end
+            S7: begin mosi = serial_data[25]; load = 0; end
+            S8: begin mosi = serial_data[24]; load = 0; end
+            S9: begin mosi = serial_data[23]; load = 0; end
+            S10: begin mosi = serial_data[22]; load = 0; end
+            S11: begin mosi = serial_data[21]; load = 0; end
+            S12: begin mosi = serial_data[20]; load = 0; end
+            S13: begin mosi = serial_data[19]; load = 0; end
+            S14: begin mosi = serial_data[18]; load = 0; end
+            S15: begin mosi = serial_data[17]; load = 0; end
+            S16: begin mosi = serial_data[16]; load = 0; end
+            S17: begin mosi = serial_data[15]; load = 0; end
+            S18: begin mosi = serial_data[14]; load = 0; end
+            S19: begin mosi = serial_data[13]; load = 0; end
+            S20: begin mosi = serial_data[12]; load = 0; end
+            S21: begin mosi = serial_data[11]; load = 0; end
+            S22: begin mosi = serial_data[10]; load = 0; end
+            S23: begin mosi = serial_data[9]; load = 0; end
+            S24: begin mosi = serial_data[8]; load = 0; end
+            S25: begin mosi = serial_data[7]; load = 0; end
+            S26: begin mosi = serial_data[6]; load = 0; end
+            S27: begin mosi = serial_data[5]; load = 0; end
+            S28: begin mosi = serial_data[4]; load = 0; end
+            S29: begin mosi = serial_data[3]; load = 0; end
+            S30: begin mosi = serial_data[2]; load = 0; end
+            S31: begin mosi = serial_data[1]; load = 0; end
+            S32: begin mosi = serial_data[0]; load = 0; end
+            S33: begin mosi = 0; load = 1; end
+        endcase
+        
+        assign serial_data = {address2, data2, address1, data1};
+        
+        
+endmodule
+
+module MPU6050_analyzer(
+    input logic clk, reset,
+    inout logic sda, scl,
+    output logic up, down, right, left
+    );
+
+    // MPU6050 registers to get accelerometer value
+    logic [7:0] ACCEL_XOUT_H = 8'h3B;
+    logic [7:0] ACCEL_XOUT_L = 8'h3C;
+    logic [7:0] ACCEL_YOUT_H = 8'h3D;
+    logic [7:0] ACCEL_YOUT_L = 8'h3E;
+    logic [7:0] ACCEL_ZOUT_H = 8'h40;
+    logic [7:0] ACCEL_ZOUT_L = 8'h41;
+    
+    logic [7:0] address;
+    logic [7:0] data_rd;
+    logic [7:0] data_wr;
+    logic load;
+    logic [7:0] accel_Xout_h;
+    logic [7:0] accel_Yout_h;
+    logic [7:0] accel_Zout_h;
+    logic [7:0] accel_Xout_l;
+    logic [7:0] accel_Yout_l;
+    logic [7:0] accel_Zout_l;
+    
+    // data loader and reader
+    I2C_StateMachine asd(clk, reset, address, data_wr, sda, scl, data_rd, load);
+    
+    logic [4:0] s, nextS;
+    
+    // state register
+    always_ff@(posedge load)
+        if(~reset)
+            s <= 0;
+        else
+            s <= nextS;
+    
+
+    // next state and output logic
+    always_comb
+        case(s)
+            0: begin
+                data_wr = 8'h00;
+                address = ACCEL_XOUT_H;
+                nextS = 1;
+            end
+            1: begin
+                accel_Xout_h = data_rd;
+                nextS = 2;
+            end
+            2: begin
+                address = ACCEL_XOUT_L;
+                nextS = 3;
+            end
+            3: begin
+                accel_Xout_l = data_rd;
+                nextS = 4;
+            end
+            4: begin
+                address = ACCEL_YOUT_H;
+                nextS = 5;
+            end
+            5: begin
+                accel_Yout_h = data_rd;
+                nextS = 6;
+            end
+            6: begin
+                address = ACCEL_YOUT_L;
+                nextS = 7;
+            end
+            7: begin
+                accel_Yout_l = data_rd;
+                nextS = 8;
+            end
+            8: begin
+                address = ACCEL_ZOUT_H;
+                nextS = 9;
+            end
+            9: begin
+                accel_Zout_h = data_rd;
+                nextS = 10;
+            end
+            10: begin
+                address = ACCEL_ZOUT_L;
+                nextS = 11;
+            end
+            11: begin
+                accel_Zout_l = data_rd;
+                nextS = 0;
+            end
+        endcase
+    
+endmodule
+
+module I2C_StateMachine(
+    input logic clk, reset,// en, rw,
+    input logic [7:0] address,          // address of register
+    input logic [7:0] data_wr,
+    inout logic sda, scl,               // serial data and clock lines
+    output logic [7:0] data_rd,
+    output logic load
+    );
+    
+    // MPU6050 registers
+    logic [7:0] PWR_MGMT_1 = 8'h6b;
+    logic [7:0] ACCEL_XOUT_H = 8'h3c;     
+    
+    // I2C address of MPU6050
+    logic [7:0] chip_write = {7'h68, 1'b0};
+    logic [7:0] chip_read  = {7'h68, 1'b1};
+    
+    
+    logic sda_in, scl_in = 1'b0;               // sda and scl(400kHz) lines for internal use
+    
+    // clock divider
+    logic [6:0] count = 7'd0;
+    logic clk_en;                       // new clock about 800 kHz
+    always_ff@(posedge clk) begin
+        count <= count + 1;
+    
+        if(count == 7'd124)
+            count <= 7'd0;
+    
+        if(count <= 7'd63)
+            clk_en <= 1'b1;
+        else
+            clk_en <= 1'b0;
+    end
+    
+    // finite state machine
+    logic [6:0] s, nextS;               // current and next states
+    logic [2:0] bitcount;
+    // state register
+    always_ff@(posedge clk_en) begin
+        if(~reset)
+            s <= 0;
+        else
+            s <= nextS;
+        scl_in = ~scl_in;
+    end
+    // next state and output logic
+    always_ff@(negedge clk_en)
+        case(s)
+            0: begin
+                sda_in <= 1;
+                nextS <= 1;
+                bitcount <= 7;
+//                data_rd <= 8'b11111111;       // for testing
+                load <= 0;
+            end
+            1: begin
+                if(scl_in) begin       // starting the transmission
+                    sda_in <= 0;
+                    nextS <= 2;
+                end
+            end
+            2: begin
+                if(~scl_in) begin
+                    sda_in <= chip_write[bitcount];
+                    if(bitcount > 0)
+                        nextS <= 3;
+                    else begin
+                        bitcount <= 7;
+                        nextS <= 4;
+                    end
+                end
+            end
+            3: begin
+                bitcount <= bitcount - 1;
+                nextS <= 2;
+            end
+            4: begin
+                if(~scl_in) begin
+                    sda_in <= 1;        // releasing the data line
+                    nextS <= 5;
+                end
+            end
+            5: begin
+                if(~scl_in) begin
+                    sda_in <= PWR_MGMT_1[bitcount];     // send data
+                    if(bitcount > 0)
+                        nextS <= 6;
+                    else begin
+                        bitcount <= 7;
+                        nextS <= 7;
+                    end
+                end
+            end
+            6: begin
+                bitcount <= bitcount - 1;
+                nextS <= 5;
+            end
+            7: begin
+                if(~scl_in) begin
+                    sda_in <= 1;        // releasing the data line
+                    nextS <= 8;
+                end
+            end
+            8: begin
+                if(~scl_in) begin
+                    sda_in <= 0;     // send data
+                    if(bitcount > 0)
+                        nextS <= 9;
+                    else begin
+                        bitcount <= 7;
+                        nextS <= 10;
+                    end
+                end
+            end
+            9: begin
+                bitcount <= bitcount - 1;
+                nextS <= 8;
+            end
+            10: begin
+                if(~scl_in) begin
+                    sda_in <= 1;        // releasing the data line
+                    nextS <= 11;
+                end
+            end
+            11: begin
+                if(~scl_in) begin
+                    sda_in <= 0;
+                    nextS <= 12;
+                end
+            end
+            12: begin
+                if(scl_in) begin
+                    sda_in <= 1;        // stoping the transmission
+                    nextS <= 13;
+                end
+            end
+            13: begin
+                if(scl_in) begin
+                    sda_in <= 0;        // starting new transmission
+                    nextS <= 14;
+                    load <= 0;
+                end
+            end
+            14: begin
+                if(~scl_in) begin
+                    sda_in <= chip_write[bitcount];
+                    if(bitcount > 0)
+                        nextS <= 15;
+                    else begin
+                        bitcount <= 7;
+                        nextS <= 16;
+                    end
+                end
+            end
+            15: begin
+                bitcount <= bitcount - 1;
+                nextS <= 14;
+            end
+            16: begin
+                if(~scl_in) begin
+                    sda_in <= 1;        // releasing the data line
+                    nextS <= 17;
+                end
+            end
+            17: begin
+                if(~scl_in) begin
+                    sda_in <= address[bitcount];
+                    if(bitcount > 0)
+                        nextS <= 18;
+                    else begin
+                        bitcount <= 7;
+                        nextS <= 19;
+                    end
+                end
+            end
+            18: begin
+                bitcount <= bitcount - 1;
+                nextS <= 17;
+            end
+            19: begin
+                if(~scl_in) begin
+                    sda_in <= 1;        // releasing the data line
+                    nextS <= 20;
+                end
+            end
+            20: begin
+                if(scl_in) begin
+                    sda_in <= 0;        // restarting..
+                    nextS <= 21;
+                end
+            end
+            21: begin
+                if(~scl_in) begin
+                    sda_in <= chip_read[bitcount];
+                    if(bitcount > 0)
+                        nextS <= 22;
+                    else begin
+                        bitcount <= 7;
+                        nextS <= 23;
+                    end
+                end
+            end
+            22: begin
+                bitcount <= bitcount - 1;
+                nextS <= 21;
+            end
+            23: begin
+                if(~scl_in) begin
+                    sda_in <= 1;        // releasing the data line
+                    nextS <= 29;
+                end
+            end
+            29: begin
+                if(~scl_in)
+                    nextS <= 24;
+            end
+            24: begin                   // start reading
+                if(scl_in) begin
+    
+                    if(sda == 1'bz)
+                        data_rd[bitcount] <= 1;
+                    else if (sda == 1'b0)
+                        data_rd[bitcount] <= sda;
+                        
+                    if(bitcount > 0)
+                        nextS <= 25;
+                    else begin
+                        bitcount <= 7;
+                        nextS <= 26;
+                    end
+                end
+            end
+            25: begin
+                bitcount <= bitcount - 1;
+                nextS <= 24;
+            end
+            26: begin
+                if(~scl_in) begin
+                    sda_in <= 0;        // sending ack signal
+                    nextS <= 27;
+                end
+            end
+            27: begin
+                if(~scl_in) begin
+                    nextS <= 28;        
+                end
+            end
+            28: begin
+                if(scl_in) begin
+                    sda_in <= 1;        // end transmission
+                    load <= 1;
+                end
+            end
+    
+        endcase
+    
+    
+    assign sda = sda_in ? 1'bz : 0;     // because sda and scl lines are open-drain lines
+    assign scl = scl_in ? 1'bz : 0;     // they can only be set low
+    
+    endmodule
