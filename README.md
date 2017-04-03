@@ -1,3 +1,4 @@
+
 # MarbleMazeGame
 <b>Bilkent University<br>
 CS223 - Digital Design</b><br>
@@ -32,3 +33,7 @@ There will be some difficulty levels. </p>
 <img src="https://dv15bg.by3302.livefilestore.com/y4mZXhXiqy2KAcyKufcJLAy4zwwHqd-Q_2tr_lNNu0k4eTMXKphR4y5ctQJAVya9bJq-jmJwOxYPYGnon5HRPqlj1OPgW2pIxGYt84mrSFJ1c6rgN3mnvQxJ0-f1NGtpqp4jNhBLEE1uSw86-JIy8dHZokNPEYZmKNfE5jWfBUPPi5y8zqeKHw-rpoRick8pkfhBJ6pRM_wMKfRCeOs3-U-Kw?width=1920&height=1080&cropmode=none" width="780" height="390" />
 
 <img src="https://dv12bg.by3302.livefilestore.com/y4m2n89CZksbqPEwBI5vzTNJQdXOMvWb_m-g0A4pKbgZSSOWnsXhie1kEocelXULDTxwvCbXMG9MSCrZ-RgFAlA6Orb5EJal0vcNQjbG3IvdzkBEirXimEPRundRNNA39-7ivtSdT-R2qHxXTR43NVjWW64M-kI5C6lBPK2N1veS2yQHUHwaV8ej_taBsHwK_4-g7PqUCnFyYta1M9DFXyFvg?width=1920&height=1080&cropmode=none" width="800" height="390" />
+
+### DataSheets
+* [MAX-7219](https://datasheets.maximintegrated.com/en/ds/MAX7219MAX7221.pdf)
+* [MPU-6050](https://www.cdiweb.com/datasheets/invensense/MPU6050_DataSheet_V3%204.pdf) 
