@@ -3,7 +3,8 @@
 <b>Bilkent University<br>
 CS223 - Digital Design</b><br>
 Course Project<br>
-Yalchin ALiyev<hr>
+Yalchin ALiyev<br>
+Youtube [video](https://www.youtube.com/watch?v=fAJNOheHpQY)<hr>
 
 ## Description
 <p>
